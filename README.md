@@ -201,6 +201,23 @@ Keys are **never hardcoded**. Read order:
 
 ---
 
+## Deployment (Streamlit Community Cloud)
+
+`sentence-transformers` pulls in `torch` (~2 GB), which can timeout on the free tier.
+Use `requirements-deploy.txt` instead — the similarity detector auto-falls back to TF-IDF.
+
+1. Push this repo to GitHub (public).
+2. Go to [share.streamlit.io](https://share.streamlit.io) → **New app**.
+3. Point it at `391rajan/Cynbit`, branch `main`, file `app.py`.
+4. Under **Advanced settings → Requirements file**, set to `requirements-deploy.txt`.
+5. Optionally add `ANTHROPIC_API_KEY` in the Secrets panel.
+6. Click **Deploy**.
+
+> **Embeddings run locally** via sentence-transformers when installed.
+> On Streamlit Cloud (deploy mode), the similarity detector uses TF-IDF instead — no data leaves the server.
+
+---
+
 ## Reports
 
 - 📄 [Technical Report](docs/technical_report.md) — Architecture, detectors, evaluation analysis

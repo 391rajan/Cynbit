@@ -1,0 +1,15 @@
+# Review Shield — Streamlit Cloud deployment
+# Drops sentence-transformers/torch to stay under free-tier memory limits.
+# The similarity detector auto-falls back to TF-IDF (scikit-learn).
+
+streamlit>=1.30.0,<2.0
+pandas>=2.0,<3.0
+numpy>=1.24,<2.0
+plotly>=5.18,<6.0
+scikit-learn>=1.3,<2.0
+
+# NLP (lightweight — no torch)
+vaderSentiment>=3.3,<4.0
+
+# Claude integration (optional — only used when ANTHROPIC_API_KEY is set)
+anthropic>=0.40,<1.0
