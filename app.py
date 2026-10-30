@@ -7,7 +7,8 @@ Pages:
   1. 🏠 Dashboard      – Brand-wide risk overview, KPI tiles, charts
   2. 🔍 Review Explorer – Filter & drill into individual reviews
   3. ✍️  Reply Workbench – Draft / Approve / Edit / Reject replies
-  4. ⚙️  Settings        – Thresholds, API key status, data upload
+  4. 📊 Evaluation      – Precision/recall/F1, per-detector recall, TTD
+  5. ⚙️  Settings        – Thresholds, API key status, data upload
 """
 
 from __future__ import annotations
@@ -27,8 +28,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 import theme  # noqa: E402 – must import after sys.path fix
 from src.data_loader import LOCATIONS, PLATFORMS, load_reviews
 from src.detectors.ensemble import WEIGHTS, run_ensemble
+from src.evaluate import compute_metrics, print_eval_table, save_eval, _score_reviews
 from src.reply_engine import draft_reply
-from src.utils import seed_everything
+from src.utils import seed_everything, pct
 
 # ---------------------------------------------------------------------------
 # App-level config
@@ -92,7 +94,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["🏠 Dashboard", "🔍 Review Explorer", "✍️ Reply Workbench", "⚙️ Settings"],
+        ["🏠 Dashboard", "🔍 Review Explorer", "✍️ Reply Workbench", "📊 Evaluation", "⚙️ Settings"],
         label_visibility="collapsed",
     )
 
@@ -779,13 +781,247 @@ def page_settings() -> None:
 
 
 # ---------------------------------------------------------------------------
+# PAGE 5 – Evaluation
+# ---------------------------------------------------------------------------
+def page_evaluation() -> None:
+    st.markdown(
+        f"""<h1 style="font-size:1.8rem;font-weight:700;margin-bottom:.25rem">
+        📊 Evaluation</h1>
+        <p style="color:{theme.P['text_secondary']};margin-bottom:1.5rem">
+        Measure detector accuracy against ground-truth labels.
+        All numbers are honest – no detector logic was tuned to improve them.</p>""",
+        unsafe_allow_html=True,
+    )
+
+    if "is_attack" not in df.columns:
+        st.warning("No ground-truth labels found. Upload a CSV with an `is_attack` column.")
+        return
+
+    # Threshold slider – recomputes live
+    threshold = st.slider(
+        "Classification threshold (ensemble score ≥ this → flagged)",
+        min_value=0.10, max_value=0.95, value=0.50, step=0.05,
+        key="eval_threshold",
+    )
+
+    with st.spinner("Running evaluation pipeline…"):
+        metrics = compute_metrics(df, threshold=threshold)
+
+    # ---- KPI tiles -------------------------------------------------------
+    cols = st.columns(4)
+    kpi_data = [
+        ("Precision", f"{metrics['precision']:.1%}", theme.P["brand_accent"]),
+        ("Recall", f"{metrics['recall']:.1%}", theme.P["brand_secondary"]),
+        ("F1 Score", f"{metrics['f1']:.1%}", theme.P["success"] if metrics["f1"] > 0.5 else theme.P["warning"]),
+        ("False Positive Rate", f"{metrics['false_positive_rate']:.1%}", theme.P["danger"] if metrics["false_positive_rate"] > 0.15 else theme.P["success"]),
+    ]
+    for col, (label, val, color) in zip(cols, kpi_data):
+        col.markdown(metric_tile(label, val, color), unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ---- Confusion matrix -----------------------------------------------
+    col_cm, col_det = st.columns(2, gap="large")
+
+    with col_cm:
+        st.markdown("#### Confusion Matrix")
+        cm = metrics["confusion_matrix"]
+        cm_df = pd.DataFrame(
+            [[cm["tp"], cm["fp"]], [cm["fn"], cm["tn"]]],
+            index=["Actual Attack", "Actual Organic"],
+            columns=["Predicted Attack", "Predicted Organic"],
+        )
+
+        fig_cm = px.imshow(
+            cm_df,
+            text_auto=True,
+            color_continuous_scale=[
+                [0, theme.P["bg_card"]],
+                [0.5, theme.P["brand_primary"]],
+                [1, theme.P["danger"]],
+            ],
+            labels=dict(color="Count"),
+            aspect="auto",
+        )
+        fig_cm.update_layout(height=280, margin=dict(l=20, r=20, t=20, b=20))
+        st.plotly_chart(fig_cm, use_container_width=True)
+
+        st.markdown(
+            f"""<div class="rs-card" style="margin-top:.5rem">
+                <div style="font-size:.85rem">
+                    <strong>True Positives:</strong> {cm['tp']} ·
+                    <strong>False Positives:</strong> {cm['fp']} ·
+                    <strong>False Negatives:</strong> {cm['fn']} ·
+                    <strong>True Negatives:</strong> {cm['tn']}
+                </div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    # ---- Per-detector recall chart ---------------------------------------
+    with col_det:
+        st.markdown("#### Per-Detector Recall")
+        det_recall = metrics["per_detector_recall"]
+        det_df = pd.DataFrame(
+            [{"Detector": k.replace("_", " ").title(), "Recall": v} for k, v in det_recall.items()]
+        )
+        fig_det = go.Figure(
+            go.Bar(
+                x=det_df["Recall"],
+                y=det_df["Detector"],
+                orientation="h",
+                marker=dict(
+                    color=[theme.P["brand_primary"], theme.P["brand_accent"],
+                           theme.P["warning"], theme.P["info"]],
+                    line=dict(color=theme.P["border"], width=0.5),
+                ),
+                text=[f"{v:.0%}" for v in det_df["Recall"]],
+                textposition="outside",
+            )
+        )
+        fig_det.update_layout(
+            xaxis=dict(tickformat=".0%", range=[0, 1.15]),
+            yaxis=dict(autorange="reversed"),
+            height=280,
+            margin=dict(l=120, r=60, t=20, b=30),
+        )
+        st.plotly_chart(fig_det, use_container_width=True)
+
+        st.markdown(
+            f'<div style="font-size:.78rem;color:{theme.P["text_muted"]};margin-top:.3rem">'
+            "Recall = fraction of attack-containing locations where the detector "
+            "score exceeds 0.40 (its trigger threshold).</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ---- Time-to-detect table -------------------------------------------
+    st.markdown("#### Time-to-Detect per Campaign")
+    ttd = metrics["time_to_detect"]
+    if ttd:
+        ttd_display = pd.DataFrame(ttd)
+        ttd_display["hours_to_detect"] = ttd_display["hours_to_detect"].apply(
+            lambda x: f"{x:.1f}h" if x is not None else "❌ Not detected"
+        )
+        st.dataframe(
+            ttd_display[[
+                "campaign", "attack_type", "location",
+                "attack_count", "hours_to_detect",
+            ]].rename(columns={
+                "campaign": "Campaign",
+                "attack_type": "Type",
+                "location": "Location",
+                "attack_count": "# Reviews",
+                "hours_to_detect": "Time to Detect",
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No attack campaigns found in the dataset.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ---- Threshold sensitivity curve ------------------------------------
+    st.markdown("#### Threshold Sensitivity")
+    thresholds_to_test = [round(t * 0.05, 2) for t in range(2, 20)]
+    curve_data: list[dict] = []
+    for t in thresholds_to_test:
+        m = compute_metrics(df, threshold=t)
+        curve_data.append({
+            "Threshold": t,
+            "Precision": m["precision"],
+            "Recall": m["recall"],
+            "F1": m["f1"],
+            "FPR": m["false_positive_rate"],
+        })
+    curve_df = pd.DataFrame(curve_data)
+
+    fig_curve = go.Figure()
+    for metric_name, color in [
+        ("Precision", theme.P["brand_accent"]),
+        ("Recall", theme.P["brand_secondary"]),
+        ("F1", theme.P["success"]),
+        ("FPR", theme.P["danger"]),
+    ]:
+        fig_curve.add_trace(go.Scatter(
+            x=curve_df["Threshold"],
+            y=curve_df[metric_name],
+            mode="lines+markers",
+            name=metric_name,
+            line=dict(color=color, width=2),
+            marker=dict(size=5),
+        ))
+    # Vertical line at current threshold
+    fig_curve.add_vline(
+        x=threshold, line_dash="dash",
+        line_color=theme.P["text_muted"],
+        annotation_text=f"Current: {threshold}",
+    )
+    fig_curve.update_layout(
+        height=320,
+        xaxis=dict(title="Threshold", tickformat=".2f"),
+        yaxis=dict(title="Score", tickformat=".0%", range=[0, 1.05]),
+        legend=dict(orientation="h", y=1.1),
+    )
+    st.plotly_chart(fig_curve, use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ---- Save + download -------------------------------------------------
+    col_save, col_dl, _ = st.columns([1, 1, 3])
+    with col_save:
+        if st.button("💾 Save eval.json", key="save_eval", type="primary"):
+            path = save_eval(metrics)
+            st.success(f"Saved to `{path}`")
+    with col_dl:
+        eval_json = json.dumps(metrics, indent=2, default=str)
+        st.download_button(
+            "📥 Download eval.json",
+            data=eval_json,
+            file_name="eval.json",
+            mime="application/json",
+        )
+
+    # ---- Limitations note ------------------------------------------------
+    st.markdown("---")
+    st.markdown(
+        f"""<div class="rs-card" style="border-left:3px solid {theme.P['warning']}">
+        <div style="font-weight:600;margin-bottom:.5rem">⚠️ Limitations</div>
+        <ul style="font-size:.85rem;color:{theme.P['text_secondary']};margin:0;padding-left:1.2rem">
+            <li>All metrics are computed on <strong>synthetic data</strong> with known attack labels.
+                Real-world performance will differ.</li>
+            <li>Thresholds are not tuned to optimise these numbers — they are reasonable defaults.</li>
+            <li>The ensemble operates at the <strong>location level</strong>; review-level predictions
+                inherit the location score with minor per-review adjustments.</li>
+            <li>Adversaries can adapt — template diversity, staggered timing, and account aging
+                would reduce detection rates.</li>
+            <li>FPR on organic reviews in a non-attacked location should be near zero;
+                FPs here occur in mixed locations where genuine and attack reviews coexist.</li>
+        </ul>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    # ---- Raw report (expandable) -----------------------------------------
+    with st.expander("📄 Raw Evaluation Report (text)"):
+        report = print_eval_table(metrics)
+        st.code(report, language="text")
+
+
+# ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
+import json  # noqa: E402 – needed for eval page download
+
 if page == "🏠 Dashboard":
     page_dashboard()
 elif page == "🔍 Review Explorer":
     page_explorer()
 elif page == "✍️ Reply Workbench":
     page_reply_workbench()
+elif page == "📊 Evaluation":
+    page_evaluation()
 elif page == "⚙️ Settings":
     page_settings()

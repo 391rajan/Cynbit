@@ -7,5 +7,11 @@ venv/
 dist/
 build/
 *.egg-info/
-fix_app.py
+
+# Secrets – never commit
+.env
 .streamlit/secrets.toml
+
+# Temp / scratch
+fix_app.py
+*.log

@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-10-30T07:14:25.058255+00:00",
+  "seed": 42,
+  "note": "Evaluated on synthetic data with ground-truth labels. Numbers reflect detector performance on this specific dataset and should not be extrapolated to production without real-world validation.",
+  "threshold": 0.5,
+  "total_reviews": 515,
+  "attack_reviews": 115,
+  "organic_reviews": 400,
+  "precision": 0.2233,
+  "recall": 1.0,
+  "f1": 0.3651,
+  "false_positive_rate": 1.0,
+  "confusion_matrix": {
+    "tp": 115,
+    "fp": 400,
+    "fn": 0,
+    "tn": 0
+  },
+  "per_detector_recall": {
+    "velocity": 1.0,
+    "similarity": 1.0,
+    "account": 0.0,
+    "rating_drop": 0.0
+  },
+  "time_to_detect": [
+    {
+      "campaign": "fake_positive@Downtown \u2013 Main St",
+      "attack_type": "fake_positive",
+      "location": "Downtown \u2013 Main St",
+      "attack_count": 18,
+      "first_attack_ts": "2026-10-13T04:51:40.684566+00:00",
+      "first_flagged_ts": "2026-10-13T04:51:40.684566+00:00",
+      "hours_to_detect": 0.0
+    },
+    {
+      "campaign": "fake_positive@Uptown \u2013 Park Ave",
+      "attack_type": "fake_positive",
+      "location": "Uptown \u2013 Park Ave",
+      "attack_count": 31,
+      "first_attack_ts": "2026-10-15T05:19:22.684566+00:00",
+      "first_flagged_ts": "2026-10-15T05:19:22.684566+00:00",
+      "hours_to_detect": 0.0
+    },
+    {
+      "campaign": "review_bomb@Midtown \u2013 5th Ave",
+      "attack_type": "review_bomb",
+      "location": "Midtown \u2013 5th Ave",
+      "attack_count": 19,
+      "first_attack_ts": "2026-08-16T09:05:38.684566+00:00",
+      "first_flagged_ts": "2026-08-16T09:05:38.684566+00:00",
+      "hours_to_detect": 0.0
+    },
+    {
+      "campaign": "review_bomb@Uptown \u2013 Park Ave",
+      "attack_type": "review_bomb",
+      "location": "Uptown \u2013 Park Ave",
+      "attack_count": 17,
+      "first_attack_ts": "2026-10-04T04:07:16.684566+00:00",
+      "first_flagged_ts": "2026-10-04T04:07:16.684566+00:00",
+      "hours_to_detect": 0.0
+    },
+    {
+      "campaign": "review_bomb@Westside \u2013 Sunset Blvd",
+      "attack_type": "review_bomb",
+      "location": "Westside \u2013 Sunset Blvd",
+      "attack_count": 30,
+      "first_attack_ts": "2026-10-04T20:44:37.684566+00:00",
+      "first_flagged_ts": "2026-10-04T20:44:37.684566+00:00",
+      "hours_to_detect": 0.0
+    }
+  ]
+}
