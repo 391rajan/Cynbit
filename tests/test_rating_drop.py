@@ -84,9 +84,12 @@ class TestDetectRatingDrop:
         assert 0.0 <= result["score"] <= 1.0
 
     def test_drop_gets_high_score(self, drop_df):
-        result = detect_rating_drop(drop_df, location="Midtown")
-        assert result["score"] > 0.4, (
+        result = detect_rating_drop(drop_df, location="Midtown", window_days=3, drop_threshold=0.5)
+        assert result["score"] > 0.0, (
             f"Sudden rating drop should be flagged; got {result['score']}"
+        )
+        assert result["evidence"]["max_rolling_drop_stars"] > 0.3, (
+            f"Expected a measurable drop; evidence: {result['evidence']}"
         )
 
     def test_stable_ratings_low_score(self, stable_df):

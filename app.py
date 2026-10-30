@@ -119,9 +119,15 @@ with st.sidebar:
     st.divider()
 
     # API key status
-    api_key = os.environ.get("ANTHROPIC_API_KEY") or (
-        st.secrets.get("ANTHROPIC_API_KEY") if hasattr(st, "secrets") else None
-    )
+    def _get_api_key_ui() -> str | None:
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        if key:
+            return key
+        try:
+            return st.secrets.get("ANTHROPIC_API_KEY")
+        except Exception:
+            return None
+    api_key = _get_api_key_ui()
     if api_key:
         st.markdown(
             f'<span style="color:{theme.P["success"]}">● Claude API connected</span>',
@@ -643,8 +649,9 @@ def page_reply_workbench() -> None:
             "approved": theme.P["success"],
             "rejected": theme.P["danger"],
         }
+        _scolor = status_colors.get(status, theme.P["text_muted"])
         st.markdown(
-            f'<div style="margin-top:.5rem;font-size:.8rem;color:{status_colors.get(status, theme.P[\"text_muted\"])}">'
+            f'<div style="margin-top:.5rem;font-size:.8rem;color:{_scolor}">'
             f"Status: <strong>{status.upper()}</strong></div>",
             unsafe_allow_html=True,
         )
